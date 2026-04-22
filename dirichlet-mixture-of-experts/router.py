@@ -11,7 +11,7 @@ class Encoder(nn.Module):
         self.model = nn.Sequential(
             nn.Linear(input_dim, hidden_dim),
             nn.ReLU(),
-            nn.Linear(hidden_dim, num_experts * 2) # replace with output dim of the alphas
+            nn.Linear(hidden_dim, num_experts * 2)
         )
     
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
