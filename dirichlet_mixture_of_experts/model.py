@@ -11,7 +11,7 @@ from .router import DirichletRouter
 @dataclass
 class DirMoEConfig:
     # dimensions
-    vocab_size: int = 32000
+    vocab_size: int = 259
     d_model: int = 512
     num_layers: int = 12
     num_heads: int = 8
@@ -28,6 +28,10 @@ class DirMoEConfig:
     tau_z: float = 2.0
     alpha_hi_prior: float = 1.985
     alpha_lo_prior: float = 0.005
+    tau_z_min: float = 0.3
+    lambda_p_min: float = 0.3
+    gate_bias_init: bool = True
+    per_token_centering: bool = True
     # Loss hyperparameters
     beta_theta: float = 0.01
     lambda_sparsity: float = 0.01
@@ -147,6 +151,9 @@ class MoELayer(nn.Module):
             tau_z=config.tau_z,
             alpha_hi_prior=config.alpha_hi_prior,
             alpha_lo_prior=config.alpha_lo_prior,
+            k=config.k,
+            gate_bias_init=config.gate_bias_init,
+            per_token_centering=config.per_token_centering,
         )
         self.experts = nn.ModuleList([
             ExpertFFN(config.d_model, config.d_ffn) for _ in range(config.num_experts)
@@ -221,6 +228,10 @@ class DirMoE(nn.Module):
             aux_list.append(aux)
         logits = self.lm_head(self.norm(x))
         return logits, aux_list
+
+    def set_router_schedule(self, tau_z: float | None = None, lambda_p: float | None = None) -> None:
+        for block in self.blocks:
+            block.moe.router.set_schedule(tau_z=tau_z, lambda_p=lambda_p)
 
 
 # Loss functions
