@@ -219,26 +219,62 @@ def collect_router_metrics(aux_list: list[dict[str, torch.Tensor]]) -> dict[str,
     active_counts = []
     active_maxes = []
     expert_loads = []
+    expert_load_entropies = []
     simpson_indices = []
+    route_entropies = []
+    route_top1_masses = []
+    route_top2_masses = []
+    route_gt_005_counts = []
+    route_gt_010_counts = []
+    z_sum_stds = []
+    z_gt_01_counts = []
+    z_gt_05_counts = []
     z_means = []
     for aux in aux_list:
         z = aux["z"].float()
         r = aux["r"].float()
-        active_counts.append(z.sum(dim=-1).mean())
-        active_maxes.append(z.sum(dim=-1).max())
-        expert_loads.append(z.mean(dim=0))
+        z_sum = z.sum(dim=-1)
+        expert_load = z.mean(dim=0)
+        load_distribution = expert_load / expert_load.sum().clamp_min(1e-8)
+        sorted_r = r.sort(dim=-1, descending=True).values
+
+        active_counts.append(z_sum.mean())
+        active_maxes.append(z_sum.max())
+        expert_loads.append(expert_load)
+        expert_load_entropies.append(-(load_distribution * load_distribution.clamp_min(1e-8).log()).sum())
         simpson_indices.append((r.pow(2).sum(dim=-1)).mean())
+        route_entropies.append(-(r * r.clamp_min(1e-8).log()).sum(dim=-1).mean())
+        route_top1_masses.append(sorted_r[..., 0].mean())
+        route_top2_masses.append(sorted_r[..., :2].sum(dim=-1).mean())
+        route_gt_005_counts.append((r > 0.05).float().sum(dim=-1).mean())
+        route_gt_010_counts.append((r > 0.10).float().sum(dim=-1).mean())
+        z_sum_stds.append(z_sum.std(unbiased=False))
+        z_gt_01_counts.append((z > 0.1).float().sum(dim=-1).mean())
+        z_gt_05_counts.append((z > 0.5).float().sum(dim=-1).mean())
         z_means.append(z.mean())
     mean_active = torch.stack(active_counts).mean().item()
     max_active = torch.stack(active_maxes).max().item()
     mean_loads = torch.stack(expert_loads).mean(dim=0)
+    load_mean = mean_loads.mean()
+    load_std = mean_loads.std(unbiased=False)
     return {
         "active_mean": mean_active,
         "active_max": max_active,
+        "z_sum_mean": mean_active,
+        "z_sum_std": torch.stack(z_sum_stds).mean().item(),
         "z_mean": torch.stack(z_means).mean().item(),
+        "z_gt_0_1_count_mean": torch.stack(z_gt_01_counts).mean().item(),
+        "z_gt_0_5_count_mean": torch.stack(z_gt_05_counts).mean().item(),
         "simpson_index": torch.stack(simpson_indices).mean().item(),
+        "r_entropy": torch.stack(route_entropies).mean().item(),
+        "r_top1_mass": torch.stack(route_top1_masses).mean().item(),
+        "r_top2_mass": torch.stack(route_top2_masses).mean().item(),
+        "r_gt_0_05_count_mean": torch.stack(route_gt_005_counts).mean().item(),
+        "r_gt_0_10_count_mean": torch.stack(route_gt_010_counts).mean().item(),
         "max_expert_load": mean_loads.max().item(),
         "min_expert_load": mean_loads.min().item(),
+        "expert_load_cv": (load_std / load_mean.clamp_min(1e-8)).item(),
+        "expert_load_entropy": torch.stack(expert_load_entropies).mean().item(),
     }
 
 
@@ -431,6 +467,9 @@ def main() -> None:
                 "recon_loss": components["recon_loss"].item(),
                 "kl_loss": components["kl_loss"].item(),
                 "sparsity_loss": components["sparsity_loss"].item(),
+                "sparsity_to_recon_ratio": (
+                    components["sparsity_loss"] / components["recon_loss"].clamp_min(1e-8)
+                ).item(),
                 "dirmoe_loss": components["dirmoe_loss"].item(),
                 "val_total_loss": val_metrics["total_loss"],
                 "val_lm_loss": val_metrics["lm_loss"],

@@ -119,6 +119,56 @@ def save_target_active_plot(runs: list[dict], output_dir: Path) -> None:
     plt.close()
 
 
+def save_router_sparsity_diagnostics(runs: list[dict], output_dir: Path) -> None:
+    keys = [
+        ("z_sum_mean", "soft z sum"),
+        ("z_gt_0_5_count_mean", "count z > 0.5"),
+        ("r_gt_0_05_count_mean", "count r > 0.05"),
+        ("r_top1_mass", "top-1 routed mass"),
+    ]
+    fig, axes = plt.subplots(2, 2, figsize=(12, 8), sharex=True)
+    for axis, (key, title) in zip(axes.flat, keys):
+        for run in runs:
+            xs, ys = series(run["metrics"], key)
+            if xs:
+                axis.plot(xs, ys, label=run["label"])
+        axis.set_title(title)
+        axis.set_xlabel("step")
+        axis.set_ylabel(key)
+    handles, labels = axes.flat[0].get_legend_handles_labels()
+    if handles:
+        fig.legend(handles, labels, loc="upper center", ncol=min(4, len(labels)), fontsize=8)
+    fig.suptitle("Router Sparsity Diagnostics")
+    fig.tight_layout(rect=(0, 0, 1, 0.93))
+    fig.savefig(output_dir / "router_sparsity_diagnostics.png", dpi=180)
+    plt.close(fig)
+
+
+def save_loss_components_plot(runs: list[dict], output_dir: Path) -> None:
+    keys = [
+        ("lm_loss", "LM loss"),
+        ("recon_loss", "reconstruction loss"),
+        ("sparsity_loss", "sparsity loss"),
+        ("sparsity_to_recon_ratio", "sparsity / reconstruction"),
+    ]
+    fig, axes = plt.subplots(2, 2, figsize=(12, 8), sharex=True)
+    for axis, (key, title) in zip(axes.flat, keys):
+        for run in runs:
+            xs, ys = series(run["metrics"], key)
+            if xs:
+                axis.plot(xs, ys, label=run["label"])
+        axis.set_title(title)
+        axis.set_xlabel("step")
+        axis.set_ylabel(key)
+    handles, labels = axes.flat[0].get_legend_handles_labels()
+    if handles:
+        fig.legend(handles, labels, loc="upper center", ncol=min(4, len(labels)), fontsize=8)
+    fig.suptitle("Loss Components")
+    fig.tight_layout(rect=(0, 0, 1, 0.93))
+    fig.savefig(output_dir / "loss_components.png", dpi=180)
+    plt.close(fig)
+
+
 def latest_source_routing(run: dict) -> dict:
     for row in reversed(run["metrics"]):
         source_routing = row.get("source_routing")
@@ -182,6 +232,8 @@ def main() -> None:
     save_loss_plot(runs, args.output_dir)
     save_experts_sweep_plot(runs, args.output_dir)
     save_target_active_plot(runs, args.output_dir)
+    save_router_sparsity_diagnostics(runs, args.output_dir)
+    save_loss_components_plot(runs, args.output_dir)
     save_domain_specialization_heatmap(runs, args.output_dir)
     print(f"Wrote plots to {args.output_dir}")
 
