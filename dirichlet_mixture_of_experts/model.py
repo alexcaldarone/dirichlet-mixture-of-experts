@@ -180,6 +180,7 @@ class MoELayer(nn.Module):
         x_recon = self.decoder(r)  # (N, D)
 
         aux = {
+            "r": r,
             "z": z,
             "alpha_p": alpha_p,
             "alpha_q": alpha_q,
@@ -257,15 +258,30 @@ class DirMoELoss(nn.Module):
         sigma2:          reconstruction variance (paper default 1.0)
     """
 
-    def __init__(self, k: int, beta_theta: float = 0.01,
-                 lambda_sparsity: float = 0.01, sigma2: float = 1.0):
+    def __init__(
+        self,
+        k: int,
+        beta_theta: float = 0.01,
+        lambda_sparsity: float = 0.01,
+        sigma2: float = 1.0,
+        use_recon_loss: bool = True,
+        use_kl_loss: bool = True,
+    ):
         super().__init__()
         self.k = k
         self.beta_theta = beta_theta
         self.lambda_sparsity = lambda_sparsity
         self.sigma2 = sigma2
+        self.use_recon_loss = use_recon_loss
+        self.use_kl_loss = use_kl_loss
 
-    def forward(self, logits: torch.Tensor, targets: torch.Tensor, aux_list: list) -> torch.Tensor:
+    def forward(
+        self,
+        logits: torch.Tensor,
+        targets: torch.Tensor,
+        aux_list: list,
+        return_components: bool = False,
+    ) -> torch.Tensor | dict[str, torch.Tensor]:
         """
         Args:
             logits:   (B, T, vocab_size)
@@ -277,7 +293,9 @@ class DirMoELoss(nn.Module):
         B, T, V = logits.shape
         L_lm = F.cross_entropy(logits.view(-1, V), targets.view(-1))
 
-        L_dirmoe = logits.new_zeros(1)
+        L_recon_total = logits.new_zeros(())
+        L_kl_total = logits.new_zeros(())
+        R_sparsity_total = logits.new_zeros(())
         for aux in aux_list:
             z = aux["z"]            # (N, E)
             alpha_p = aux["alpha_p"]
@@ -289,6 +307,29 @@ class DirMoELoss(nn.Module):
             L_kl = _dirichlet_kl(alpha_q, alpha_p).mean()
             R_sparsity = self.lambda_sparsity * (z.sum(-1) - self.k).pow(2).mean()
 
-            L_dirmoe = L_dirmoe + L_recon + self.beta_theta * L_kl + R_sparsity
+            L_recon_total = L_recon_total + L_recon
+            L_kl_total = L_kl_total + L_kl
+            R_sparsity_total = R_sparsity_total + R_sparsity
 
-        return L_lm + L_dirmoe / len(aux_list)
+        num_layers = len(aux_list)
+        L_recon_mean = L_recon_total / num_layers
+        L_kl_mean = L_kl_total / num_layers
+        R_sparsity_mean = R_sparsity_total / num_layers
+
+        L_dirmoe = R_sparsity_mean
+        if self.use_recon_loss:
+            L_dirmoe = L_dirmoe + L_recon_mean
+        if self.use_kl_loss:
+            L_dirmoe = L_dirmoe + self.beta_theta * L_kl_mean
+
+        total_loss = L_lm + L_dirmoe
+        if return_components:
+            return {
+                "total_loss": total_loss,
+                "lm_loss": L_lm,
+                "recon_loss": L_recon_mean,
+                "kl_loss": L_kl_mean,
+                "sparsity_loss": R_sparsity_mean,
+                "dirmoe_loss": L_dirmoe,
+            }
+        return total_loss
