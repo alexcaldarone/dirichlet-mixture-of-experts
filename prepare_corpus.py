@@ -7,8 +7,8 @@ DEFAULT_FINEWEB_REPO = "HuggingFaceFW/fineweb-edu"
 DEFAULT_FINEWEB_CONFIG = "sample-10BT"
 DEFAULT_WIKIPEDIA_REPO = "wikimedia/wikipedia"
 DEFAULT_WIKIPEDIA_CONFIG = "20231101.en"
-DEFAULT_ARXIV_REPO = "armanc/scientific_papers"
-DEFAULT_ARXIV_CONFIG = "arxiv"
+DEFAULT_ARXIV_REPO = "gfissore/arxiv-abstracts-2021"
+DEFAULT_ARXIV_CONFIG = "default"
 
 
 def parse_args() -> argparse.Namespace:
